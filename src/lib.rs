@@ -52,7 +52,7 @@ struct ForAll<Input> {
 }
 
 fn print_panic(panic: Box<Any + Send>) -> string::String {
-    panic.downcast_ref::<string::String>().unwrap_or(&"<Unprintable panic>".to_string()).clone()
+    panic.downcast_ref::<&str>().unwrap_or(&"<Unprintable panic>").to_string()
 }
 
 fn catch<Input: Send + 'static>(function: fn(Input) -> (), input: Input) -> Result<(), string::String> {
@@ -134,17 +134,29 @@ impl Generator<string::String> for String {
         string
     }
     fn shrink(&self, rng: &mut StdRng, value: &string::String) -> string::String {
-        let mut value = value.clone();
-        let ix = Range::new(0, value.len() + 1).ind_sample(rng);
-        let char = value.remove(ix);
-        if random() {
-            value.insert(ix, Char.shrink(rng, &char))
+        let mut chars = value.chars().collect::<Vec<char>>();
+        if (chars.len() > 0) {
+            let ix = Range::new(0, chars.len()).ind_sample(rng);
+            let char = chars.remove(ix);
+            if random() {
+                chars.insert(ix, Char.shrink(rng, &char))
+            }
         }
+        let value = chars.drain().collect();
         value
     }
 }
 
 // TODO have a test that uses default config and panics, for #[test]
+
+fn test_panic(x: i64) {
+    panic!("oh noes");
+}
+
+#[test]
+fn really_test_panic() {
+    assert_eq!(catch(test_panic, 0), Result::Err("oh noes".to_string()));
+}
 
 fn test_strings(string: string::String) {
     assert!(!string.starts_with("o"));
@@ -152,14 +164,18 @@ fn test_strings(string: string::String) {
 
 #[test]
 fn really_test_strings() {
-    print!("Run is {:?}",
+    let run =
         ForAll {
             generator: Box::new(String),
             function: test_strings
         }.test(Config {
             seed: vec![0, 1, 2, 3, 4, 5],
-            max_tests: 100,
-            max_shrinks: 100,
-            max_size: 100.0,
-        }));
+            max_tests: 1000,
+            max_shrinks: 2000,
+            max_size: 1000.0,
+        });
+    match run {
+        Run::Failure{shrunk_input, ..} => assert_eq!(shrunk_input, "o"),
+        _ => assert!(false, run),
+    }
 }
