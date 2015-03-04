@@ -1,3 +1,5 @@
+// TODO can no longer chain gens because we switched to type-level gens. do we care?
+
 #![feature(core)]
 #![feature(collections)]
 
