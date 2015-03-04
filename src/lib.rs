@@ -137,6 +137,95 @@ impl Arbitrary for String {
     }
 }
 
+// TODO is there any way to avoid cloning input each time?
+//      we can't consume the input because it may take multiple shrinks to find a failing input
+
+impl<A: Arbitrary + Clone, B: Arbitrary + Clone> Arbitrary for (A,B) {
+    fn grow(rng: &mut StdRng, size: f64) -> (A,B) {
+        (Arbitrary::grow(rng, size), Arbitrary::grow(rng, size))
+    }
+    fn shrink(rng: &mut StdRng, value: &(A,B)) -> (A,B) {
+        let (a, b) = value.clone();
+        match Range::new(0, 2).ind_sample(rng) {
+            0 => (Arbitrary::shrink(rng, &a), b),
+            1 => (a, Arbitrary::shrink(rng, &b)),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl<A: Arbitrary + Clone, B: Arbitrary + Clone, C: Arbitrary + Clone> Arbitrary for (A,B,C) {
+    fn grow(rng: &mut StdRng, size: f64) -> (A,B,C) {
+        (Arbitrary::grow(rng, size), Arbitrary::grow(rng, size), Arbitrary::grow(rng, size))
+    }
+    fn shrink(rng: &mut StdRng, value: &(A,B,C)) -> (A,B,C) {
+        let (a, b, c) = value.clone();
+        match Range::new(0, 3).ind_sample(rng) {
+            0 => (Arbitrary::shrink(rng, &a), b, c),
+            1 => (a, Arbitrary::shrink(rng, &b), c),
+            2 => (a, b, Arbitrary::shrink(rng, &c)),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl<A: Arbitrary + Clone, B: Arbitrary + Clone, C: Arbitrary + Clone, D: Arbitrary + Clone> Arbitrary for (A,B,C,D) {
+    fn grow(rng: &mut StdRng, size: f64) -> (A,B,C,D) {
+        (Arbitrary::grow(rng, size), Arbitrary::grow(rng, size), Arbitrary::grow(rng, size), Arbitrary::grow(rng, size))
+    }
+    fn shrink(rng: &mut StdRng, value: &(A,B,C,D)) -> (A,B,C,D) {
+        let (a, b, c, d) = value.clone();
+        match Range::new(0, 4).ind_sample(rng) {
+            0 => (Arbitrary::shrink(rng, &a), b, c, d),
+            1 => (a, Arbitrary::shrink(rng, &b), c, d),
+            2 => (a, b, Arbitrary::shrink(rng, &c), d),
+            3 => (a, b, c, Arbitrary::shrink(rng, &d)),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl<A: Arbitrary + Clone, B: Arbitrary + Clone, C: Arbitrary + Clone, D: Arbitrary + Clone, E: Arbitrary + Clone> Arbitrary for (A,B,C,D,E) {
+    fn grow(rng: &mut StdRng, size: f64) -> (A,B,C,D,E) {
+        (Arbitrary::grow(rng, size), Arbitrary::grow(rng, size), Arbitrary::grow(rng, size), Arbitrary::grow(rng, size), Arbitrary::grow(rng, size))
+    }
+    fn shrink(rng: &mut StdRng, value: &(A,B,C,D,E)) -> (A,B,C,D,E) {
+        let (a, b, c, d, e) = value.clone();
+        match Range::new(0, 5).ind_sample(rng) {
+            0 => (Arbitrary::shrink(rng, &a), b, c, d, e),
+            1 => (a, Arbitrary::shrink(rng, &b), c, d, e),
+            2 => (a, b, Arbitrary::shrink(rng, &c), d, e),
+            3 => (a, b, c, Arbitrary::shrink(rng, &d), e),
+            4 => (a, b, c, d, Arbitrary::shrink(rng, &e)),
+            _ => unreachable!(),
+        }
+    }
+}
+
+// TODO more tuples :(
+
+impl<A: Arbitrary + Clone> Arbitrary for Vec<A> {
+    fn grow(rng: &mut StdRng, size: f64) -> Vec<A> {
+        let length = Range::new(0, size.to_uint().unwrap() + 1).ind_sample(rng);
+        let mut vec = Vec::with_capacity(length);
+        for _ in (0..length) {
+            vec.push(Arbitrary::grow(rng, size));
+        }
+        vec
+    }
+    fn shrink(rng: &mut StdRng, value: &Vec<A>) -> Vec<A> {
+        let mut vec = value.clone();
+        if vec.len() > 0 {
+            let ix = Range::new(0, vec.len()).ind_sample(rng);
+            let elem = vec.remove(ix);
+            if random() {
+                vec.insert(ix, Arbitrary::shrink(rng, &elem))
+            }
+        }
+        vec
+    }
+}
+
 #[test]
 fn test_panic() {
     fn oh_noes(_: i64) {
