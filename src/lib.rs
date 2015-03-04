@@ -1,3 +1,6 @@
+#![feature(core)]
+#![feature(collections)]
+
 extern crate rand;
 
 use std::any::Any;
@@ -5,22 +8,22 @@ use std::char;
 use std::string;
 use std::num::ToPrimitive;
 use std::cmp::min;
+use std::fmt::Debug;
 use rand::random;
 use rand::StdRng;
 use rand::SeedableRng;
 use rand::distributions::range::Range;
-use rand::distributions::range::SampleRange;
 use rand::distributions::IndependentSample;
 
-trait Generator<T> {
+pub trait Generator<T> {
     fn grow(&self, rng: &mut StdRng, size: f64) -> T;
     fn shrink(&self, rng: &mut StdRng, &T) -> T;
 }
 
-type Seed = Vec<usize>; // seed for StdRng
+pub type Seed = Vec<usize>; // seed for StdRng
 
 #[derive(Debug)]
-struct Config {
+pub struct Config {
     seed: Seed,
     max_size: f64,
     max_tests: i64,
@@ -28,7 +31,7 @@ struct Config {
 }
 
 #[derive(Debug)]
-enum Run<Input> {
+pub enum Run<Input> {
     Success{
         config: Config,
     },
@@ -42,13 +45,26 @@ enum Run<Input> {
     }
 }
 
-trait Property<Input> {
+impl<Input: Debug> Run<Input> {
+    pub fn unwrap(&self) -> () {
+        match *self {
+            Run::Success{..} => (),
+            Run::Failure{..} => panic!(format!("Run failed: {:?}", self))
+        }
+    }
+}
+
+pub trait Property<Input> {
     fn test(&self, config: Config) -> Run<Input>;
 }
 
-struct ForAll<Input> {
+pub struct ForAll<Input> {
     generator: Box<Generator<Input>>,
     function: fn(Input) -> ()
+}
+
+pub fn for_all<Input>(generator: Box<Generator<Input>>, function: fn(Input) -> ()) -> ForAll<Input> {
+    ForAll{generator:generator, function:function}
 }
 
 fn print_panic(panic: Box<Any + Send>) -> string::String {
@@ -71,7 +87,7 @@ impl<Input: Send + Clone + 'static> Property<Input> for ForAll<Input> {
                 let failure = result.unwrap_err();
                 let mut shrunk_input = input.clone();
                 let mut shrunk_failure = failure.clone();
-                for shrink in (0..config.max_shrinks) {
+                for _ in (0..config.max_shrinks) {
                     let next_shrunk_input = self.generator.shrink(&mut rng, &shrunk_input);
                     let result = catch(self.function, next_shrunk_input.clone());
                     if result.is_err() {
@@ -97,7 +113,7 @@ impl<Input: Send + Clone + 'static> Property<Input> for ForAll<Input> {
 
 // TODO split gens out into a module
 
-struct U32;
+pub struct U32;
 
 impl Generator<u32> for U32 {
     fn grow(&self, rng: &mut StdRng, size: f64) -> u32 {
@@ -108,7 +124,7 @@ impl Generator<u32> for U32 {
     }
 }
 
-struct Char;
+pub struct Char;
 
 impl Generator<char> for Char {
     fn grow(&self, rng: &mut StdRng, size: f64) -> char {
@@ -122,7 +138,7 @@ impl Generator<char> for Char {
     }
 }
 
-struct String;
+pub struct String;
 
 impl Generator<string::String> for String {
     fn grow(&self, rng: &mut StdRng, size: f64) -> string::String {
@@ -135,7 +151,7 @@ impl Generator<string::String> for String {
     }
     fn shrink(&self, rng: &mut StdRng, value: &string::String) -> string::String {
         let mut chars = value.chars().collect::<Vec<char>>();
-        if (chars.len() > 0) {
+        if chars.len() > 0 {
             let ix = Range::new(0, chars.len()).ind_sample(rng);
             let char = chars.remove(ix);
             if random() {
@@ -149,31 +165,27 @@ impl Generator<string::String> for String {
 
 // TODO have a test that uses default config and panics, for #[test]
 
-fn test_panic(x: i64) {
-    panic!("oh noes");
+#[test]
+fn test_panic() {
+    fn oh_noes(_: i64) {
+        panic!("oh noes");
+    }
+    assert_eq!(catch(oh_noes, 0), Result::Err("oh noes".to_string()));
 }
 
 #[test]
-fn really_test_panic() {
-    assert_eq!(catch(test_panic, 0), Result::Err("oh noes".to_string()));
-}
-
-fn test_strings(string: string::String) {
-    assert!(!string.starts_with("o"));
-}
-
-#[test]
-fn really_test_strings() {
-    let run =
-        ForAll {
-            generator: Box::new(String),
-            function: test_strings
-        }.test(Config {
-            seed: vec![0, 1, 2, 3, 4, 5],
-            max_tests: 1000,
-            max_shrinks: 2000,
-            max_size: 1000.0,
-        });
+fn test_shrinking() {
+    let config: Config = Config {
+        seed: vec![2264676582817791, 2472426652827647, 1173672018575359, 2619002815774719, 3338075644100607, 7399177170452479, 2208063329140735, 8682999839195135, 620332180307967, 7778401773420543],
+        max_tests: 1000,
+        max_shrinks: 2000,
+        max_size: 1000.0,
+    };
+    fn test(string: string::String) {
+        assert!(!string.starts_with("o"));
+    }
+    let gen = String;
+    let run = for_all(Box::new(gen), test).test(config);
     match run {
         Run::Failure{shrunk_input, ..} => assert_eq!(shrunk_input, "o"),
         _ => assert!(false, run),
